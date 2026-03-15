@@ -19,6 +19,57 @@
         <div class="loading-label">loading stackclock...</div>
     </div>
 
+    <!-- AUTH -->
+    <div id="authScreen">
+        <div class="auth-wrap">
+            <div class="auth-brand">
+                <h1>Stack<span>Clock</span></h1>
+                <p>Track your time. Own your earnings.</p>
+            </div>
+            <div class="auth-card">
+                <div class="tab-row">
+                    <button class="tab-btn active" onclick="authTab('login')">Sign In</button>
+                    <button class="tab-btn" onclick="authTab('signup')">Create Account</button>
+                </div>
+
+                <!-- LOGIN -->
+                <div id="loginForm">
+                    <div class="field">
+                        <label>Email</label>
+                        <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
+                    </div>
+                    <div class="field">
+                        <label>Password</label>
+                        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"
+                            onkeydown="if(event.key==='Enter')doLogin()">
+                    </div>
+                    <button class="btn-primary" onclick="doLogin()">Sign In →</button>
+                </div>
+
+                <!-- SIGNUP -->
+                <div id="signupForm" style="display:none">
+                    <div class="field">
+                        <label>Full Name</label>
+                        <input type="text" id="signupName" placeholder="Keshav Singh" autocomplete="name">
+                    </div>
+                    <div class="field">
+                        <label>Email</label>
+                        <input type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email">
+                    </div>
+                    <div class="field">
+                        <label>Password</label>
+                        <input type="password" id="signupPass" placeholder="min 6 characters"
+                            autocomplete="new-password" onkeydown="if(event.key==='Enter')doSignup()">
+                    </div>
+                    <button class="btn-primary" onclick="doSignup()">Create Account →</button>
+                </div>
+
+                <div class="auth-msg" id="authMsg"></div>
+            </div>
+        </div>
+    </div>
+
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="app.js"></script>
 </body>
