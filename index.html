@@ -84,7 +84,69 @@
             </div>
         </nav>
 
-        <!-- PAGES GO HERE IN NEXT STEPS -->
+        <!-- TRACKER PAGE -->
+        <div class="page active" id="pageTracker">
+            <div class="tracker-page">
+
+                <div class="rate-bar">
+                    <span class="rate-bar-label">Rate</span>
+                    <div class="rate-input-wrap">
+                        <span class="rate-sym" id="rateSym">$</span>
+                        <input class="rate-input" type="number" id="rateInput" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                    <span class="rate-suffix" id="rateSuffix">/ hr · CAD</span>
+                </div>
+
+                <div class="money-hero">
+                    <div class="earned-label">Earned This Session</div>
+                    <div class="money-number idle" id="moneyNum">
+                        <span class="sym" id="moneySym">$</span>0<span class="cts">.00</span>
+                    </div>
+                    <div class="money-sub" id="moneySub">set your rate and press start</div>
+                </div>
+
+                <div class="timer-wrap">
+                    <div class="timer-display" id="timerDisplay">00:00:00</div>
+                </div>
+
+                <div class="status-wrap">
+                    <div class="status-pill idle" id="statusPill">
+                        <div class="pill-dot"></div>
+                        <span id="statusLabel">Idle</span>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button class="btn-ctrl btn-start" id="btnStart" onclick="startWork()">▶ Start</button>
+                    <button class="btn-ctrl btn-break" id="btnBreak" onclick="toggleBreak()" disabled>⏸ Break</button>
+                    <button class="btn-ctrl btn-stop" id="btnStop" onclick="stopWork()" disabled>■ Stop</button>
+                </div>
+
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-label">Work Time</div>
+                        <div class="stat-value" id="statWork">00:00:00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Break Time</div>
+                        <div class="stat-value" id="statBreak">00:00:00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Per Minute</div>
+                        <div class="stat-value" id="statPerMin">—</div>
+                    </div>
+                </div>
+
+                <div class="log-header">
+                    <div class="log-title">Session Log</div>
+                    <button class="btn-clear" onclick="clearLog()">Clear</button>
+                </div>
+                <div class="log-box" id="logBox">
+                    <div class="log-empty">No activity yet — press Start</div>
+                </div>
+
+            </div>
+        </div>
 
         <!-- MOBILE BOTTOM TABS -->
         <div class="mobile-tabs">
