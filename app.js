@@ -137,6 +137,8 @@ function goPage(page) {
     'page' + page.charAt(0).toUpperCase() + page.slice(1)
   );
   if (pageEl) pageEl.classList.add('active');
+  if (page === 'history')  loadHistory();
+  if (page === 'settings') loadSettingsForm();
 }
 
 // ── HELPERS ──
@@ -352,5 +354,70 @@ function renderLog() {
 }
 
 function clearLog() { logRows = []; renderLog(); }
+
+// ── HISTORY ──
+async function loadHistory() {
+  if (!user) return;
+  const listEl = document.getElementById('sessionsList');
+  if (listEl) listEl.innerHTML = '<div class="no-sessions">Loading...</div>';
+
+  const { data, error } = await sb
+    .from('sessions').select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (error || !data) {
+    if (listEl) listEl.innerHTML = '<div class="no-sessions">Could not load sessions.</div>';
+    return;
+  }
+
+  const totalEarned = data.reduce((a, r) => a + parseFloat(r.total_earned || 0), 0);
+  const totalMs     = data.reduce((a, r) => a + parseInt(r.work_duration_ms || 0), 0);
+  const s           = sym();
+
+  const he = document.getElementById('histEarned');
+  if (he) he.textContent = `${s}${totalEarned.toFixed(2)}`;
+
+  const hh = document.getElementById('histHours');
+  if (hh) hh.textContent =
+    `${Math.floor(totalMs/3600000)}h ${Math.floor((totalMs%3600000)/60000)}m`;
+
+  const hc = document.getElementById('histCount');
+  if (hc) hc.textContent = data.length;
+
+  if (!data.length) {
+    if (listEl) listEl.innerHTML =
+      '<div class="no-sessions">No sessions yet — start your first session!</div>';
+    return;
+  }
+
+  if (listEl) listEl.innerHTML = data.map(row => {
+    const d     = new Date(row.started_at);
+    const date  = d.toLocaleDateString('en-CA', { month:'short', day:'numeric', year:'numeric' });
+    const time  = d.toLocaleTimeString('en-CA', { hour:'2-digit', minute:'2-digit' });
+    const dur   = fmtHMS(parseInt(row.work_duration_ms || 0));
+    const earn  = parseFloat(row.total_earned || 0).toFixed(2);
+    const notes = row.notes || '—';
+    return `
+      <div class="session-row">
+        <span class="s-date">${date}<br>${time}</span>
+        <span class="s-notes">${notes}</span>
+        <span class="s-dur">${dur}</span>
+        <span class="s-earn">${s}${earn}</span>
+        <button class="btn-del" onclick="deleteSession('${row.id}')" title="Delete">×</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function deleteSession(id) {
+  if (!confirm('Delete this session?')) return;
+  const { error } = await sb.from('sessions').delete()
+    .eq('id', id).eq('user_id', user.id);
+  if (error) { showToast('Could not delete.'); return; }
+  showToast('Session deleted.');
+  loadHistory();
+}
 
 init();

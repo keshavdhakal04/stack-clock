@@ -148,6 +148,42 @@
             </div>
         </div>
 
+        <!-- HISTORY PAGE -->
+        <div class="page" id="pageHistory">
+            <div class="history-page">
+                <div class="page-title">History</div>
+                <div class="page-sub">All your tracked sessions</div>
+                <div class="summary-row">
+                    <div class="summary-card s-peach">
+                        <div class="summary-label">Total Earned</div>
+                        <div class="summary-value" id="histEarned">$0.00</div>
+                    </div>
+                    <div class="summary-card s-teal">
+                        <div class="summary-label">Hours Worked</div>
+                        <div class="summary-value" id="histHours">0h 0m</div>
+                    </div>
+                    <div class="summary-card s-indigo">
+                        <div class="summary-label">Sessions</div>
+                        <div class="summary-value" id="histCount">0</div>
+                    </div>
+                </div>
+                <div class="sessions-wrap">
+                    <div class="sessions-head">
+                        <span>Date</span>
+                        <span>Notes</span>
+                        <span>Duration</span>
+                        <span>Earned</span>
+                        <span></span>
+                    </div>
+                    <div id="sessionsList">
+                        <div class="no-sessions">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+
         <!-- MOBILE BOTTOM TABS -->
         <div class="mobile-tabs">
             <button class="mobile-tab active" onclick="goPage('tracker')">
