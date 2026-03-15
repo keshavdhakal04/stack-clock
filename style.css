@@ -996,6 +996,145 @@ input[type=number]::-webkit-outer-spin-button {
     font-size: 14px;
 }
 
+/* ── SETTINGS ── */
+.settings-page {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 36px 20px 120px;
+}
+
+.settings-card {
+    background: white;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px var(--shadow);
+    margin-bottom: 16px;
+}
+
+.settings-card-header {
+    padding: 14px 22px;
+    background: var(--eggshell);
+    border-bottom: 1px solid var(--eggshell-dark);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--indigo-light);
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--eggshell);
+    gap: 16px;
+}
+
+.setting-row:last-child {
+    border-bottom: none;
+}
+
+.setting-info {
+    flex: 1;
+}
+
+.setting-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--indigo);
+}
+
+.setting-sub {
+    font-size: 12px;
+    color: var(--indigo-light);
+    margin-top: 3px;
+}
+
+.setting-input {
+    background: var(--eggshell);
+    border: 2px solid var(--eggshell-dark);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 15px;
+    color: var(--indigo);
+    outline: none;
+    width: 140px;
+    text-align: right;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.setting-input:focus {
+    border-color: var(--burnt-peach);
+    background: white;
+}
+
+.setting-input-text {
+    background: var(--eggshell);
+    border: 2px solid var(--eggshell-dark);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    color: var(--indigo);
+    outline: none;
+    width: 200px;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.setting-input-text:focus {
+    border-color: var(--burnt-peach);
+    background: white;
+}
+
+.setting-select {
+    background: var(--eggshell);
+    border: 2px solid var(--eggshell-dark);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--indigo);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.setting-select:focus {
+    border-color: var(--burnt-peach);
+}
+
+.btn-save {
+    width: 100%;
+    padding: 16px;
+    background: var(--burnt-peach);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 16px rgba(224, 122, 95, 0.35);
+    margin-top: 4px;
+}
+
+.btn-save:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(224, 122, 95, 0.4);
+}
+
+.save-msg {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--teal);
+    margin-top: 14px;
+    min-height: 22px;
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 640px) {
     .nav-center {
@@ -1053,6 +1192,10 @@ input[type=number]::-webkit-outer-spin-button {
 
     .rate-sym {
         font-size: 20px;
+    }
+
+    .settings-page {
+        padding-bottom: 110px;
     }
 }
 

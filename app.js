@@ -90,8 +90,10 @@ async function init() {
 
     if (session?.user) {
       user = session.user;
-      document.getElementById('authScreen').style.display = 'none';
-      document.getElementById('appScreen').style.display  = 'block';
+      await loadProfile();
+      showApp();  
+      //document.getElementById('authScreen').style.display = 'none';
+      //document.getElementById('appScreen').style.display  = 'block';
     } else {
       document.getElementById('authScreen').style.display = 'flex';
     }
@@ -104,13 +106,22 @@ async function init() {
   sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session?.user) {
       user = session.user;
+      await loadProfile(); 
       document.getElementById('authScreen').style.display = 'none';
-      document.getElementById('appScreen').style.display  = 'block';
+      showApp(); 
+      //document.getElementById('appScreen').style.display  = 'block';
     } else if (event === 'SIGNED_OUT') {
       document.getElementById('appScreen').style.display  = 'none';
       document.getElementById('authScreen').style.display = 'flex';
     }
   });
+}
+
+function showApp() {
+  document.getElementById('appScreen').style.display = 'block';
+  updateRateUI();
+  resetDisplays();
+  renderLog();
 }
 
 // ── TOAST ──
@@ -418,6 +429,68 @@ async function deleteSession(id) {
   if (error) { showToast('Could not delete.'); return; }
   showToast('Session deleted.');
   loadHistory();
+}
+
+// ── PROFILE ──
+async function loadProfile() {
+  if (!user) return;
+  const { data } = await sb.from('profiles')
+    .select('*').eq('id', user.id).single();
+  if (data) {
+    profile.full_name   = data.full_name   || '';
+    profile.hourly_rate = data.hourly_rate || 50;
+    profile.currency    = data.currency    || 'CAD';
+  }
+}
+
+async function saveSettings() {
+  const name     = document.getElementById('setName').value.trim();
+  const rate     = parseFloat(document.getElementById('setRate').value) || 50;
+  const currency = document.getElementById('setCurrency').value;
+
+  profile.full_name   = name;
+  profile.hourly_rate = rate;
+  profile.currency    = currency;
+
+  if (user) {
+    const { error } = await sb.from('profiles').upsert({
+      id:          user.id,
+      full_name:   name,
+      hourly_rate: rate,
+      currency:    currency
+    });
+    if (error) { showToast('Could not save settings.'); return; }
+  }
+
+  updateRateUI();
+
+  const el = document.getElementById('saveMsg');
+  el.textContent = '✓ Settings saved to your account!';
+  setTimeout(() => el.textContent = '', 3000);
+}
+
+function updateRateUI() {
+  const s = sym();
+  const rateEl = document.getElementById('rateInput');
+  if (rateEl) rateEl.value = profile.hourly_rate;
+  const rateSymEl = document.getElementById('rateSym');
+  if (rateSymEl) rateSymEl.textContent = s;
+  const moneySymEl = document.getElementById('moneySym');
+  if (moneySymEl) moneySymEl.textContent = s;
+  const rateSuffixEl = document.getElementById('rateSuffix');
+  if (rateSuffixEl) rateSuffixEl.textContent = `/ hr · ${profile.currency}`;
+  const greetEl = document.getElementById('navGreeting');
+  if (greetEl && profile.full_name)
+    greetEl.textContent = `Hi, ${profile.full_name.split(' ')[0]} 👋`;
+}
+
+function loadSettingsForm() {
+  const nameEl = document.getElementById('setName');
+  if (nameEl) nameEl.value = profile.full_name;
+  const rateEl = document.getElementById('setRate');
+  if (rateEl) rateEl.value = profile.hourly_rate;
+  const currEl = document.getElementById('setCurrency');
+  if (currEl) currEl.value = profile.currency;
 }
 
 init();

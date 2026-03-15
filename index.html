@@ -182,7 +182,52 @@
             </div>
         </div>
 
+        <!-- SETTINGS PAGE -->
+        <div class="page" id="pageSettings">
+            <div class="settings-page">
+                <div class="page-title">Settings</div>
+                <div class="page-sub">Your preferences are saved to your account</div>
 
+                <div class="settings-card">
+                    <div class="settings-card-header">Profile</div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="setting-label">Full Name</div>
+                            <div class="setting-sub">Your display name</div>
+                        </div>
+                        <input class="setting-input-text" type="text" id="setName" placeholder="Your name">
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-card-header">Rate & Currency</div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="setting-label">Hourly Rate</div>
+                            <div class="setting-sub">Your default rate per hour</div>
+                        </div>
+                        <input class="setting-input" type="number" id="setRate" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="setting-label">Currency</div>
+                            <div class="setting-sub">Display currency</div>
+                        </div>
+                        <select class="setting-select" id="setCurrency">
+                            <option value="CAD">🇨🇦 CAD</option>
+                            <option value="USD">🇺🇸 USD</option>
+                            <option value="EUR">🇪🇺 EUR</option>
+                            <option value="GBP">🇬🇧 GBP</option>
+                            <option value="AUD">🇦🇺 AUD</option>
+                            <option value="JPY">🇯🇵 JPY</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn-save" onclick="saveSettings()">Save Settings</button>
+                <div class="save-msg" id="saveMsg"></div>
+            </div>
+        </div>
 
         <!-- MOBILE BOTTOM TABS -->
         <div class="mobile-tabs">
