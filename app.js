@@ -113,4 +113,30 @@ async function init() {
   });
 }
 
+// ── TOAST ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── NAV ──
+function goPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+  document.querySelectorAll('.nav-tab').forEach(t =>
+    t.classList.toggle('active', t.textContent.trim().toLowerCase() === page));
+
+  document.querySelectorAll('.mobile-tab').forEach(t => {
+    const label = t.querySelector('.tab-label');
+    t.classList.toggle('active', label && label.textContent.trim().toLowerCase() === page);
+  });
+
+  const pageEl = document.getElementById(
+    'page' + page.charAt(0).toUpperCase() + page.slice(1)
+  );
+  if (pageEl) pageEl.classList.add('active');
+}
+
 init();

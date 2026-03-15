@@ -69,6 +69,43 @@
         </div>
     </div>
 
+    <!-- APP -->
+    <div id="appScreen">
+        <nav class="nav">
+            <div class="nav-brand">Stack<span>Clock</span></div>
+            <div class="nav-center">
+                <button class="nav-tab active" onclick="goPage('tracker')">Tracker</button>
+                <button class="nav-tab" onclick="goPage('history')">History</button>
+                <button class="nav-tab" onclick="goPage('settings')">Settings</button>
+            </div>
+            <div class="nav-right">
+                <span class="nav-greeting" id="navGreeting"></span>
+                <button class="btn-signout" onclick="doLogout()">Sign Out</button>
+            </div>
+        </nav>
+
+        <!-- PAGES GO HERE IN NEXT STEPS -->
+
+        <!-- MOBILE BOTTOM TABS -->
+        <div class="mobile-tabs">
+            <button class="mobile-tab active" onclick="goPage('tracker')">
+                <span class="tab-icon">⏱</span>
+                <span class="tab-label">Tracker</span>
+            </button>
+            <button class="mobile-tab" onclick="goPage('history')">
+                <span class="tab-icon">📋</span>
+                <span class="tab-label">History</span>
+            </button>
+            <button class="mobile-tab" onclick="goPage('settings')">
+                <span class="tab-icon">⚙️</span>
+                <span class="tab-label">Settings</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast" id="toast"></div>
+
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="app.js"></script>
