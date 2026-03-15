@@ -1,45 +1,90 @@
 :root {
-  --eggshell:     #f4f1de;
-  --burnt-peach:  #e07a5f;
-  --indigo:       #3d405b;
-  --teal:         #81b29a;
-  --apricot:      #f2cc8f;
-  --eggshell-dark:#e8e4cc;
-  --indigo-light: #565978;
-  --indigo-dim:   #3d405b18;
-  --peach-dim:    #e07a5f18;
-  --teal-dim:     #81b29a20;
-  --shadow:       rgba(61,64,91,0.10);
-  --shadow-md:    rgba(61,64,91,0.16);
+    --eggshell: #f4f1de;
+    --burnt-peach: #e07a5f;
+    --indigo: #3d405b;
+    --teal: #81b29a;
+    --apricot: #f2cc8f;
+    --eggshell-dark: #e8e4cc;
+    --indigo-light: #565978;
+    --indigo-dim: #3d405b18;
+    --peach-dim: #e07a5f18;
+    --teal-dim: #81b29a20;
+    --shadow: rgba(61, 64, 91, 0.10);
+    --shadow-md: rgba(61, 64, 91, 0.16);
 }
 
-*, *::before, *::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
 html {
-  font-size: 16px;
-  -webkit-text-size-adjust: 100%;
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--eggshell);
-  color: var(--indigo);
-  font-family: 'DM Sans', sans-serif;
-  min-height: 100vh;
-  line-height: 1.5;
+    background: var(--eggshell);
+    color: var(--indigo);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    line-height: 1.5;
 }
 
 /* ── UTILS ── */
 input[type=number]::-webkit-inner-spin-button,
-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
-
-::selection {
-  background: var(--peach-dim);
-  color:      var(--burnt-peach);
+input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
 }
 
-::-webkit-scrollbar       { width: 4px; }
-::-webkit-scrollbar-thumb { background: var(--eggshell-dark); border-radius: 2px; }
+::selection {
+    background: var(--peach-dim);
+    color: var(--burnt-peach);
+}
+
+::-webkit-scrollbar {
+    width: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--eggshell-dark);
+    border-radius: 2px;
+}
+
+/* ── LOADING ── */
+#loading {
+    position: fixed;
+    inset: 0;
+    background: var(--eggshell);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 999;
+}
+
+.spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--eggshell-dark);
+    border-top-color: var(--burnt-peach);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--indigo-light);
+    letter-spacing: 0.1em;
+}
