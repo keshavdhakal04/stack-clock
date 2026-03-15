@@ -1,3 +1,18 @@
+:root {
+  --eggshell:     #f4f1de;
+  --burnt-peach:  #e07a5f;
+  --indigo:       #3d405b;
+  --teal:         #81b29a;
+  --apricot:      #f2cc8f;
+  --eggshell-dark:#e8e4cc;
+  --indigo-light: #565978;
+  --indigo-dim:   #3d405b18;
+  --peach-dim:    #e07a5f18;
+  --teal-dim:     #81b29a20;
+  --shadow:       rgba(61,64,91,0.10);
+  --shadow-md:    rgba(61,64,91,0.16);
+}
+
 *, *::before, *::after {
   margin: 0;
   padding: 0;
@@ -10,6 +25,21 @@ html {
 }
 
 body {
+  background: var(--eggshell);
+  color: var(--indigo);
+  font-family: 'DM Sans', sans-serif;
   min-height: 100vh;
   line-height: 1.5;
 }
+
+/* ── UTILS ── */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+::selection {
+  background: var(--peach-dim);
+  color:      var(--burnt-peach);
+}
+
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--eggshell-dark); border-radius: 2px; }
