@@ -139,4 +139,218 @@ function goPage(page) {
   if (pageEl) pageEl.classList.add('active');
 }
 
+// ── HELPERS ──
+const SYMS = { CAD:'$', USD:'$', EUR:'€', GBP:'£', AUD:'$', JPY:'¥' };
+const sym  = () => SYMS[profile.currency] || '$';
+
+function fmtHMS(ms) {
+  const t = Math.floor(ms / 1000);
+  return [Math.floor(t/3600), Math.floor((t%3600)/60), t%60]
+    .map(n => String(n).padStart(2,'0')).join(':');
+}
+
+function fmtMoney(amount) {
+  const v = Math.floor(amount * 100) / 100;
+  return {
+    dollars: Math.floor(v).toLocaleString(),
+    cents:   String(Math.floor(v * 100) % 100).padStart(2,'0')
+  };
+}
+
+function calcEarnings(ms) {
+  return Math.floor((ms / 3_600_000) * profile.hourly_rate * 100) / 100;
+}
+
+// ── TRACKER ──
+function startWork() {
+  if (appState !== 'idle') return;
+
+  const inputRate = parseFloat(document.getElementById('rateInput').value);
+  if (!inputRate || inputRate <= 0) {
+    showToast('⚠️ Set your hourly rate first!');
+    return;
+  }
+  profile.hourly_rate = inputRate;
+
+  appState     = 'working';
+  workStart    = Date.now();
+  sessionStart = new Date();
+  totalWorkMs  = 0;
+  totalBreakMs = 0;
+  breakCount   = 0;
+
+  setUIWorking();
+  addLog('Session started', null);
+  rafId = requestAnimationFrame(tick);
+}
+
+function toggleBreak() {
+  if (appState === 'working') {
+    totalWorkMs += Date.now() - workStart;
+    breakStart   = Date.now();
+    appState     = 'break';
+    breakCount++;
+    setUIBreak();
+    addLog(`Break #${breakCount} started`, null);
+  } else if (appState === 'break') {
+    totalBreakMs += Date.now() - breakStart;
+    workStart     = Date.now();
+    appState      = 'working';
+    setUIWorking();
+    addLog(`Break #${breakCount} ended`, null);
+  }
+}
+
+async function stopWork() {
+  if (appState === 'idle') return;
+  cancelAnimationFrame(rafId);
+
+  const now = Date.now();
+  if (appState === 'working') totalWorkMs  += now - workStart;
+  if (appState === 'break')   totalBreakMs += now - breakStart;
+
+  const earned = calcEarnings(totalWorkMs);
+  addLog(`Session ended — ${fmtHMS(totalWorkMs)} worked`, earned);
+  setUIIdle();
+  appState = 'idle';
+
+  if (user) {
+    try {
+      await sb.from('sessions').insert({
+        user_id:           user.id,
+        started_at:        sessionStart.toISOString(),
+        ended_at:          new Date().toISOString(),
+        work_duration_ms:  Math.round(totalWorkMs),
+        break_duration_ms: Math.round(totalBreakMs),
+        break_count:       breakCount,
+        hourly_rate:       profile.hourly_rate,
+        currency:          profile.currency,
+        total_earned:      Math.floor(earned * 10000) / 10000,
+        client_name:       'Default',
+        notes:             null,
+      });
+      showToast('✓ Session saved!');
+    } catch(e) {
+      console.error(e);
+      showToast('Session ended but could not save.');
+    }
+  }
+
+  resetDisplays();
+}
+
+// ── TICK LOOP ──
+function tick() {
+  const now = Date.now();
+  let workMs, elapsed;
+
+  if (appState === 'working') {
+    workMs  = totalWorkMs + (now - workStart);
+    elapsed = workMs + totalBreakMs;
+  } else if (appState === 'break') {
+    workMs  = totalWorkMs;
+    elapsed = workMs + totalBreakMs + (now - breakStart);
+  } else return;
+
+  const timerEl = document.getElementById('timerDisplay');
+  if (timerEl) timerEl.textContent = fmtHMS(elapsed);
+
+  const earned = calcEarnings(workMs);
+  const { dollars, cents } = fmtMoney(earned);
+  const s = sym();
+
+  const moneyEl = document.getElementById('moneyNum');
+  if (moneyEl) moneyEl.innerHTML =
+    `<span class="sym">${s}</span>${dollars}<span class="cts">.${cents}</span>`;
+
+  const subEl = document.getElementById('moneySub');
+  if (subEl) subEl.textContent =
+    `${s}${(profile.hourly_rate/3600).toFixed(5)} / sec  ·  ${s}${profile.hourly_rate.toFixed(2)} / hr`;
+
+  const swEl = document.getElementById('statWork');
+  if (swEl) swEl.textContent = fmtHMS(workMs);
+
+  const sbEl = document.getElementById('statBreak');
+  if (sbEl) sbEl.textContent = fmtHMS(
+    appState === 'break' ? totalBreakMs + (now - breakStart) : totalBreakMs
+  );
+
+  const spEl = document.getElementById('statPerMin');
+  if (spEl) spEl.textContent = `${s}${(profile.hourly_rate/60).toFixed(3)}`;
+
+  rafId = requestAnimationFrame(tick);
+}
+
+// ── UI STATES ──
+function setUIWorking() {
+  document.getElementById('moneyNum').className      = 'money-number working';
+  document.getElementById('timerDisplay').className  = 'timer-display';
+  document.getElementById('statusPill').className    = 'status-pill working';
+  document.getElementById('statusLabel').textContent = 'Working';
+  document.getElementById('btnStart').disabled       = true;
+  document.getElementById('btnBreak').disabled       = false;
+  document.getElementById('btnBreak').textContent    = '⏸ Break';
+  document.getElementById('btnStop').disabled        = false;
+}
+
+function setUIBreak() {
+  document.getElementById('moneyNum').className      = 'money-number on-break';
+  document.getElementById('timerDisplay').className  = 'timer-display on-break';
+  document.getElementById('statusPill').className    = 'status-pill break';
+  document.getElementById('statusLabel').textContent = 'On Break';
+  document.getElementById('btnBreak').textContent    = '▶ Resume';
+}
+
+function setUIIdle() {
+  document.getElementById('moneyNum').className      = 'money-number idle';
+  document.getElementById('timerDisplay').className  = 'timer-display';
+  document.getElementById('statusPill').className    = 'status-pill idle';
+  document.getElementById('statusLabel').textContent = 'Idle';
+  document.getElementById('btnStart').disabled       = false;
+  document.getElementById('btnBreak').disabled       = true;
+  document.getElementById('btnBreak').textContent    = '⏸ Break';
+  document.getElementById('btnStop').disabled        = true;
+}
+
+function resetDisplays() {
+  const s = sym();
+  const mn = document.getElementById('moneyNum');
+  if (mn) mn.innerHTML = `<span class="sym">${s}</span>0<span class="cts">.00</span>`;
+  const td = document.getElementById('timerDisplay');
+  if (td) td.textContent = '00:00:00';
+  const ms = document.getElementById('moneySub');
+  if (ms) ms.textContent = 'set your rate and press start';
+  ['statWork','statBreak'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '00:00:00';
+  });
+  const sp = document.getElementById('statPerMin');
+  if (sp) sp.textContent = '—';
+}
+
+// ── LOG ──
+function addLog(event, earned) {
+  logRows.unshift({ time: new Date().toTimeString().slice(0,8), event, earned });
+  renderLog();
+}
+
+function renderLog() {
+  const box = document.getElementById('logBox');
+  if (!box) return;
+  const s = sym();
+  if (!logRows.length) {
+    box.innerHTML = '<div class="log-empty">No activity yet — press Start</div>';
+    return;
+  }
+  box.innerHTML = logRows.map(r => `
+    <div class="log-row">
+      <span class="log-time">${r.time}</span>
+      <span class="log-event">${r.event}</span>
+      <span class="log-earn">${r.earned !== null ? s + r.earned.toFixed(4) : ''}</span>
+    </div>
+  `).join('');
+}
+
+function clearLog() { logRows = []; renderLog(); }
+
 init();
