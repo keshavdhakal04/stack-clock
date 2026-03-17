@@ -63,16 +63,28 @@ async function doSignup() {
   showMsg('✓ Account created! Check your email to confirm.', 'success');
 }
 
+// async function doLogout() {
+//   if (appState !== 'idle') {
+//     if (!confirm('You have an active session. Stop and sign out?')) return;
+//     cancelAnimationFrame(rafId);
+//     appState = 'idle';
+//   }
+//   await sb.auth.signOut();
+//   user    = null;
+//   logRows = [];
+//   document.getElementById('appScreen').style.display  = 'none';
+//   document.getElementById('authScreen').style.display = 'flex';
+// }
+
 async function doLogout() {
-  if (appState !== 'idle') {
-    if (!confirm('You have an active session. Stop and sign out?')) return;
-    cancelAnimationFrame(rafId);
-    appState = 'idle';
-  }
-  await sb.auth.signOut();
-  user    = null;
+  if (appState !== 'idle') await saveActiveTimer();  // save instead of stopping
+  cancelAnimationFrame(rafId);
+  rafId = null;
+  appState = 'idle';
+  user = null;
   logRows = [];
-  document.getElementById('appScreen').style.display  = 'none';
+  await sb.auth.signOut();
+  document.getElementById('appScreen').style.display = 'none';
   document.getElementById('authScreen').style.display = 'flex';
 }
 
@@ -117,11 +129,28 @@ async function init() {
   });
 }
 
-function showApp() {
+// function showApp() {
+//   document.getElementById('appScreen').style.display = 'block';
+//   updateRateUI();
+//   resetDisplays();
+//   renderLog();
+// }
+
+async function showApp() {
   document.getElementById('appScreen').style.display = 'block';
   updateRateUI();
-  resetDisplays();
-  renderLog();
+  const restored = await restoreActiveTimer();
+  if (restored) {
+    updateRateUI();
+    if (appState === 'working') setUIWorking();
+    if (appState === 'break')   setUIBreak();
+    addLog('Session resumed', null);
+    rafId = requestAnimationFrame(tick);
+    showToast('⏱ Timer resumed — it kept running while you were away');
+  } else {
+    resetDisplays();
+    renderLog();
+  }
 }
 
 // ── TOAST ──
@@ -175,7 +204,7 @@ function calcEarnings(ms) {
 }
 
 // ── TRACKER ──
-function startWork() {
+async function startWork() {
   if (appState !== 'idle') return;
 
   const inputRate = parseFloat(document.getElementById('rateInput').value);
@@ -195,9 +224,10 @@ function startWork() {
   setUIWorking();
   addLog('Session started', null);
   rafId = requestAnimationFrame(tick);
+  await saveActiveTimer();
 }
 
-function toggleBreak() {
+async function toggleBreak() {
   if (appState === 'working') {
     totalWorkMs += Date.now() - workStart;
     breakStart   = Date.now();
@@ -212,6 +242,7 @@ function toggleBreak() {
     setUIWorking();
     addLog(`Break #${breakCount} ended`, null);
   }
+  await saveActiveTimer();
 }
 
 async function stopWork() {
@@ -226,6 +257,7 @@ async function stopWork() {
   addLog(`Session ended — ${fmtHMS(totalWorkMs)} worked`, earned);
   setUIIdle();
   appState = 'idle';
+  await clearActiveTimer();
 
   if (user) {
     try {
@@ -491,6 +523,42 @@ function loadSettingsForm() {
   if (rateEl) rateEl.value = profile.hourly_rate;
   const currEl = document.getElementById('setCurrency');
   if (currEl) currEl.value = profile.currency;
+}
+
+// ── ACTIVETIMER ──
+async function saveActiveTimer() {
+  if (!user) return;
+  await sb.from('profiles').update({
+    active_timer: {
+      appState, workStart, breakStart,
+      totalWorkMs, totalBreakMs, breakCount,
+      sessionStart: sessionStart ? sessionStart.toISOString() : null,
+      hourly_rate: profile.hourly_rate,
+      currency: profile.currency,
+    }
+  }).eq('id', user.id);
+}
+
+async function clearActiveTimer() {
+  if (!user) return;
+  await sb.from('profiles').update({ active_timer: null }).eq('id', user.id);
+}
+
+async function restoreActiveTimer() {
+  if (!user) return false;
+  const { data } = await sb.from('profiles').select('active_timer').eq('id', user.id).single();
+  const s = data?.active_timer;
+  if (!s || !s.appState || s.appState === 'idle') return false;
+  appState = s.appState;
+  workStart = s.workStart;
+  breakStart = s.breakStart;
+  totalWorkMs = s.totalWorkMs || 0;
+  totalBreakMs = s.totalBreakMs || 0;
+  breakCount = s.breakCount || 0;
+  sessionStart = s.sessionStart ? new Date(s.sessionStart) : new Date();
+  profile.hourly_rate = s.hourly_rate || profile.hourly_rate;
+  profile.currency = s.currency || profile.currency;
+  return true;
 }
 
 init();
