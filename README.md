@@ -1,7 +1,7 @@
 # ⏱️ StackClock
 Track your time. Own your earnings.
 
-🔗 **Live Demo:** [stackclock.infinityfree.me](https://stackclock.infinityfree.me)
+🔗 **Live Demo:** [stackclock.vercel.app](https://stackclock.vercel.app/)
 
 ---
 

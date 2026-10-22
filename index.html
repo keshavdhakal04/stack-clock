@@ -3,24 +3,32 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="StackClock: track your time and earnings in real time, with breaks, history and multi-currency support.">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f2f1ec" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f0f0e" media="(prefers-color-scheme: dark)">
     <title>StackClock</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23d91414'/%3E%3Cpath d='M16 7v10l6 4' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800;900&family=JetBrains+Mono:wght@400;500;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+    <noscript>StackClock needs JavaScript to run. Please enable it and reload.</noscript>
 
     <!-- LOADING -->
-    <div id="loading">
-        <div class="spinner"></div>
-        <div class="loading-label">loading stackclock...</div>
+    <div id="loading" role="status">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loading-label">Loading StackClock…</div>
     </div>
 
     <!-- AUTH -->
-    <div id="authScreen">
+    <main id="authScreen">
         <div class="auth-wrap">
             <div class="auth-brand">
                 <h1>Stack<span>Clock</span></h1>
@@ -28,227 +36,245 @@
             </div>
             <div class="auth-card">
                 <div class="tab-row">
-                    <button class="tab-btn active" onclick="authTab('login')">Sign In</button>
-                    <button class="tab-btn" onclick="authTab('signup')">Create Account</button>
+                    <button type="button" class="tab-btn active" onclick="authTab('login')">Sign In</button>
+                    <button type="button" class="tab-btn" onclick="authTab('signup')">Create Account</button>
                 </div>
 
                 <!-- LOGIN -->
                 <div id="loginForm">
                     <div class="field">
-                        <label>Email</label>
-                        <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email"
+                            aria-describedby="authMsg">
                     </div>
                     <div class="field">
-                        <label>Password</label>
+                        <label for="loginPass">Password</label>
                         <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"
-                            onkeydown="if(event.key==='Enter')doLogin()">
+                            aria-describedby="authMsg" onkeydown="if(event.key==='Enter')doLogin()">
                     </div>
-                    <button class="btn-primary" onclick="doLogin()">Sign In →</button>
+                    <button type="button" class="btn-primary" onclick="doLogin()">Sign In →</button>
                 </div>
 
                 <!-- SIGNUP -->
                 <div id="signupForm" style="display:none">
                     <div class="field">
-                        <label>Full Name</label>
+                        <label for="signupName">Full Name</label>
                         <input type="text" id="signupName" placeholder="Keshav Dhakal" autocomplete="name">
                     </div>
                     <div class="field">
-                        <label>Email</label>
+                        <label for="signupEmail">Email</label>
                         <input type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email">
                     </div>
                     <div class="field">
-                        <label>Password</label>
+                        <label for="signupPass">Password (min 6 characters)</label>
                         <input type="password" id="signupPass" placeholder="min 6 characters"
-                            autocomplete="new-password" onkeydown="if(event.key==='Enter')doSignup()">
+                            autocomplete="new-password" aria-describedby="authMsg"
+                            onkeydown="if(event.key==='Enter')doSignup()">
                     </div>
-                    <button class="btn-primary" onclick="doSignup()">Create Account →</button>
+                    <button type="button" class="btn-primary" onclick="doSignup()">Create Account →</button>
                 </div>
 
-                <div class="auth-msg" id="authMsg"></div>
+                <div class="auth-msg" id="authMsg" role="alert"></div>
             </div>
         </div>
-    </div>
+    </main>
 
     <!-- APP -->
     <div id="appScreen">
-        <nav class="nav">
+        <a class="skip-link" href="#main">Skip to content</a>
+
+        <header class="nav">
             <div class="nav-brand">Stack<span>Clock</span></div>
-            <div class="nav-center">
-                <button class="nav-tab active" onclick="goPage('tracker')">Tracker</button>
-                <button class="nav-tab" onclick="goPage('history')">History</button>
-                <button class="nav-tab" onclick="goPage('settings')">Settings</button>
-            </div>
+            <nav class="nav-center" aria-label="Primary">
+                <button type="button" class="nav-tab active" onclick="goPage('tracker')">Tracker</button>
+                <button type="button" class="nav-tab" onclick="goPage('history')">History</button>
+                <button type="button" class="nav-tab" onclick="goPage('settings')">Settings</button>
+            </nav>
             <div class="nav-right">
                 <span class="nav-greeting" id="navGreeting"></span>
-                <button class="btn-signout" onclick="doLogout()">Sign Out</button>
+                <button type="button" class="btn-signout" onclick="doLogout()">Sign Out</button>
             </div>
-        </nav>
+        </header>
 
-        <!-- TRACKER PAGE -->
-        <div class="page active" id="pageTracker">
-            <div class="tracker-page">
+        <main id="main" tabindex="-1">
 
-                <div class="rate-bar">
-                    <span class="rate-bar-label">Rate</span>
-                    <div class="rate-input-wrap">
-                        <span class="rate-sym" id="rateSym">$</span>
-                        <input class="rate-input" type="number" id="rateInput" placeholder="0.00" min="0" step="0.01">
-                    </div>
-                    <span class="rate-suffix" id="rateSuffix">/ hr · CAD</span>
-                </div>
+            <!-- TRACKER PAGE -->
+            <section class="page active" id="pageTracker" aria-labelledby="trackerTitle">
+                <div class="tracker-page">
+                    <h1 class="sr-only" id="trackerTitle">Tracker</h1>
 
-                <div class="money-hero">
-                    <div class="earned-label">Earned This Session</div>
-                    <div class="money-number idle" id="moneyNum">
-                        <span class="sym" id="moneySym">$</span>0<span class="cts">.00</span>
-                    </div>
-                    <div class="money-sub" id="moneySub">set your rate and press start</div>
-                </div>
-
-                <div class="timer-wrap">
-                    <div class="timer-display" id="timerDisplay">00:00:00</div>
-                </div>
-
-                <div class="status-wrap">
-                    <div class="status-pill idle" id="statusPill">
-                        <div class="pill-dot"></div>
-                        <span id="statusLabel">Idle</span>
-                    </div>
-                </div>
-
-                <div class="controls">
-                    <button class="btn-ctrl btn-start" id="btnStart" onclick="startWork()">▶ Start</button>
-                    <button class="btn-ctrl btn-break" id="btnBreak" onclick="toggleBreak()" disabled>⏸ Break</button>
-                    <button class="btn-ctrl btn-stop" id="btnStop" onclick="stopWork()" disabled>■ Stop</button>
-                </div>
-
-                <div class="stats-row">
-                    <div class="stat-card">
-                        <div class="stat-label">Work Time</div>
-                        <div class="stat-value" id="statWork">00:00:00</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Break Time</div>
-                        <div class="stat-value" id="statBreak">00:00:00</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Per Minute</div>
-                        <div class="stat-value" id="statPerMin">—</div>
-                    </div>
-                </div>
-
-                <div class="log-header">
-                    <div class="log-title">Session Log</div>
-                    <button class="btn-clear" onclick="clearLog()">Clear</button>
-                </div>
-                <div class="log-box" id="logBox">
-                    <div class="log-empty">No activity yet — press Start</div>
-                </div>
-
-            </div>
-        </div>
-
-        <!-- HISTORY PAGE -->
-        <div class="page" id="pageHistory">
-            <div class="history-page">
-                <div class="page-title">History</div>
-                <div class="page-sub">All your tracked sessions</div>
-                <div class="summary-row">
-                    <div class="summary-card s-peach">
-                        <div class="summary-label">Total Earned</div>
-                        <div class="summary-value" id="histEarned">$0.00</div>
-                    </div>
-                    <div class="summary-card s-teal">
-                        <div class="summary-label">Hours Worked</div>
-                        <div class="summary-value" id="histHours">0h 0m</div>
-                    </div>
-                    <div class="summary-card s-indigo">
-                        <div class="summary-label">Sessions</div>
-                        <div class="summary-value" id="histCount">0</div>
-                    </div>
-                </div>
-                <div class="sessions-wrap">
-                    <div class="sessions-head">
-                        <span>Date</span>
-                        <span>Notes</span>
-                        <span>Duration</span>
-                        <span>Earned</span>
-                        <span></span>
-                    </div>
-                    <div id="sessionsList">
-                        <div class="no-sessions">Loading...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- SETTINGS PAGE -->
-        <div class="page" id="pageSettings">
-            <div class="settings-page">
-                <div class="page-title">Settings</div>
-                <div class="page-sub">Your preferences are saved to your account</div>
-
-                <div class="settings-card">
-                    <div class="settings-card-header">Profile</div>
-                    <div class="setting-row">
-                        <div class="setting-info">
-                            <div class="setting-label">Full Name</div>
-                            <div class="setting-sub">Your display name</div>
+                    <div class="rate-bar">
+                        <label class="rate-bar-label" for="rateInput">Rate</label>
+                        <div class="rate-input-wrap">
+                            <span class="rate-sym" id="rateSym" aria-hidden="true">$</span>
+                            <input class="rate-input" type="number" id="rateInput" placeholder="0.00" min="0"
+                                step="0.01" inputmode="decimal" aria-describedby="rateSuffix">
                         </div>
-                        <input class="setting-input-text" type="text" id="setName" placeholder="Your name">
+                        <span class="rate-suffix" id="rateSuffix">/ hr · CAD</span>
+                    </div>
+
+                    <div class="money-hero">
+                        <div class="earned-label" id="earnedLabel">Earned This Session</div>
+                        <div class="money-number idle" id="moneyNum" aria-labelledby="earnedLabel">
+                            <span class="sym" id="moneySym">$</span>0<span class="cts">.00</span>
+                        </div>
+                        <div class="money-sub" id="moneySub">set your rate and press start</div>
+                    </div>
+
+                    <div class="timer-wrap">
+                        <div class="timer-display" id="timerDisplay" role="timer" aria-label="Elapsed session time">00:00:00</div>
+                    </div>
+
+                    <div class="status-wrap">
+                        <div class="status-pill idle" id="statusPill" role="status">
+                            <div class="pill-dot" aria-hidden="true"></div>
+                            <span id="statusLabel">Idle</span>
+                        </div>
+                    </div>
+
+                    <div class="controls" role="group" aria-label="Session controls">
+                        <button type="button" class="btn-ctrl btn-start" id="btnStart" onclick="startWork()">▶ Start</button>
+                        <button type="button" class="btn-ctrl btn-break" id="btnBreak" onclick="toggleBreak()" disabled>⏸ Break</button>
+                        <button type="button" class="btn-ctrl btn-stop" id="btnStop" onclick="stopWork()" disabled>■ Stop</button>
+                    </div>
+
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-label" id="lblWork">Work Time</div>
+                            <div class="stat-value" id="statWork" aria-labelledby="lblWork">00:00:00</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label" id="lblBreak">Break Time</div>
+                            <div class="stat-value" id="statBreak" aria-labelledby="lblBreak">00:00:00</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label" id="lblPerMin">Per Minute</div>
+                            <div class="stat-value" id="statPerMin" aria-labelledby="lblPerMin">—</div>
+                        </div>
+                    </div>
+
+                    <div class="log-header">
+                        <h2 class="log-title" id="logTitle">Session Log</h2>
+                        <button type="button" class="btn-clear" onclick="clearLog()">Clear</button>
+                    </div>
+                    <div class="log-box" id="logBox" role="log" aria-labelledby="logTitle" aria-live="off" tabindex="0">
+                        <div class="log-empty">No activity yet — press Start</div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- HISTORY PAGE -->
+            <section class="page" id="pageHistory" aria-labelledby="historyTitle">
+                <div class="history-page">
+                    <h1 class="page-title" id="historyTitle">History</h1>
+                    <p class="page-sub">All your tracked sessions</p>
+                    <div class="summary-row">
+                        <div class="summary-card s-peach">
+                            <div class="summary-label" id="lblEarned">Total Earned</div>
+                            <div class="summary-value" id="histEarned" aria-labelledby="lblEarned">$0.00</div>
+                        </div>
+                        <div class="summary-card s-teal">
+                            <div class="summary-label" id="lblHours">Hours Worked</div>
+                            <div class="summary-value" id="histHours" aria-labelledby="lblHours">0h 0m</div>
+                        </div>
+                        <div class="summary-card s-indigo">
+                            <div class="summary-label" id="lblCount">Sessions</div>
+                            <div class="summary-value" id="histCount" aria-labelledby="lblCount">0</div>
+                        </div>
+                    </div>
+                    <div class="sessions-wrap" role="region" aria-label="Saved sessions">
+                        <div class="sessions-head">
+                            <span>Date</span>
+                            <span>Notes</span>
+                            <span>Duration</span>
+                            <span>Earned</span>
+                            <span class="sr-only">Actions</span>
+                        </div>
+                        <div id="sessionsList" aria-live="polite">
+                            <div class="no-sessions">Loading…</div>
+                        </div>
                     </div>
                 </div>
+            </section>
 
-                <div class="settings-card">
-                    <div class="settings-card-header">Rate & Currency</div>
-                    <div class="setting-row">
-                        <div class="setting-info">
-                            <div class="setting-label">Hourly Rate</div>
-                            <div class="setting-sub">Your default rate per hour</div>
+            <!-- SETTINGS PAGE -->
+            <section class="page" id="pageSettings" aria-labelledby="settingsTitle">
+                <div class="settings-page">
+                    <h1 class="page-title" id="settingsTitle">Settings</h1>
+                    <p class="page-sub">Your preferences are saved to your account</p>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-header">Profile</h2>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-label" id="lblName">Full Name</div>
+                                <div class="setting-sub" id="subName">Your display name</div>
+                            </div>
+                            <input class="setting-input-text" type="text" id="setName" placeholder="Your name"
+                                autocomplete="name" aria-labelledby="lblName" aria-describedby="subName">
                         </div>
-                        <input class="setting-input" type="number" id="setRate" placeholder="0.00" min="0" step="0.01">
                     </div>
-                    <div class="setting-row">
-                        <div class="setting-info">
-                            <div class="setting-label">Currency</div>
-                            <div class="setting-sub">Display currency</div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-header">Rate &amp; Currency</h2>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-label" id="lblRate">Hourly Rate</div>
+                                <div class="setting-sub" id="subRate">Your default rate per hour</div>
+                            </div>
+                            <input class="setting-input" type="number" id="setRate" placeholder="0.00" min="0"
+                                step="0.01" inputmode="decimal" aria-labelledby="lblRate" aria-describedby="subRate">
                         </div>
-                        <select class="setting-select" id="setCurrency">
-                            <option value="CAD">🇨🇦 CAD</option>
-                            <option value="USD">🇺🇸 USD</option>
-                            <option value="EUR">🇪🇺 EUR</option>
-                            <option value="GBP">🇬🇧 GBP</option>
-                            <option value="AUD">🇦🇺 AUD</option>
-                            <option value="JPY">🇯🇵 JPY</option>
-                        </select>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-label" id="lblCurrency">Currency</div>
+                                <div class="setting-sub" id="subCurrency">Display currency</div>
+                            </div>
+                            <select class="setting-select" id="setCurrency" aria-labelledby="lblCurrency"
+                                aria-describedby="subCurrency">
+                                <option value="CAD">CAD · Canadian dollar</option>
+                                <option value="USD">USD · US dollar</option>
+                                <option value="EUR">EUR · Euro</option>
+                                <option value="GBP">GBP · Pound sterling</option>
+                                <option value="AUD">AUD · Australian dollar</option>
+                                <option value="JPY">JPY · Japanese yen</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <button type="button" class="btn-save" onclick="saveSettings()">Save Settings</button>
+                    <div class="save-msg" id="saveMsg" role="status"></div>
                 </div>
+            </section>
 
-                <button class="btn-save" onclick="saveSettings()">Save Settings</button>
-                <div class="save-msg" id="saveMsg"></div>
-            </div>
-        </div>
+        </main>
 
         <!-- MOBILE BOTTOM TABS -->
-        <div class="mobile-tabs">
-            <button class="mobile-tab active" onclick="goPage('tracker')">
-                <span class="tab-icon">⏱</span>
+        <nav class="mobile-tabs" aria-label="Primary mobile">
+            <button type="button" class="mobile-tab active" onclick="goPage('tracker')">
+                <span class="tab-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>
+                </span>
                 <span class="tab-label">Tracker</span>
             </button>
-            <button class="mobile-tab" onclick="goPage('history')">
-                <span class="tab-icon">📋</span>
+            <button type="button" class="mobile-tab" onclick="goPage('history')">
+                <span class="tab-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                </span>
                 <span class="tab-label">History</span>
             </button>
-            <button class="mobile-tab" onclick="goPage('settings')">
-                <span class="tab-icon">⚙️</span>
+            <button type="button" class="mobile-tab" onclick="goPage('settings')">
+                <span class="tab-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+                </span>
                 <span class="tab-label">Settings</span>
             </button>
-        </div>
+        </nav>
     </div>
 
     <!-- TOAST -->
-    <div class="toast" id="toast"></div>
-
+    <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="app.js"></script>
