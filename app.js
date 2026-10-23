@@ -1,564 +1,714 @@
 // ── SUPABASE ──
 const SUPABASE_URL = 'https://psefgnjgdkrlhxqdqmyz.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzZWZnbmpnZGtybGh4cWRxbXl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MjkxMTIsImV4cCI6MjA4OTAwNTExMn0.jhLYQReM3qQUEN63lW-tjBttsp6YlfhtiuA8HfnTDRU';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY); // anon key: safe only with correct RLS
+
+// ── HELPERS ──
+const $ = id => document.getElementById(id);
+const SYMS = { CAD: '$', USD: '$', EUR: '€', GBP: '£', AUD: '$', JPY: '¥' };
+const symFor = c => SYMS[c] || '$';
+const pad = n => String(n).padStart(2, '0');
+
+// Safe DOM builder: strings become text nodes, never HTML.
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
+  }
+  kids.flat().filter(c => c != null && c !== false).forEach(c => n.append(c));
+  return n;
+}
+
+function fmtHMS(ms) {
+  const t = Math.floor(Math.max(0, ms) / 1000);
+  return [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60].map(pad).join(':');
+}
+
+// Money is computed in integer cents to avoid float drift.
+function calcCents(ms, rate) {
+  return Math.floor((Math.max(0, ms) * Math.round(rate * 100)) / 3_600_000);
+}
+function splitCents(c) {
+  return { dollars: Math.floor(c / 100).toLocaleString(), cents: pad(c % 100) };
+}
+function fmtCur(amount, currency) {
+  try {
+    return new Intl.NumberFormat('en-CA', { style: 'currency', currency }).format(amount);
+  } catch { return `${symFor(currency)}${Number(amount).toFixed(2)}`; }
+}
+function toLocalInput(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
 
 // ── STATE ──
-let user         = null;
-let profile      = { full_name: '', hourly_rate: 50, currency: 'CAD' };
-let appState     = 'idle'; // 'idle' | 'working' | 'break'
-let workStart    = null;
-let breakStart   = null;
-let totalWorkMs  = 0;
-let totalBreakMs = 0;
-let breakCount   = 0;
-let sessionStart = null;
-let rafId        = null;
-let logRows      = [];
+let user = null, appUserId = null, entering = null;
+let profile = { full_name: '', hourly_rate: 50, currency: 'CAD' };
+let appState = 'idle';          // 'idle' | 'working' | 'break'
+let workStart = null, breakStart = null;   // epoch ms of the CURRENT segment only
+let totalWorkMs = 0, totalBreakMs = 0;     // accumulated, completed segments
+let breakCount = 0, sessionStart = null;
+let sessionRate = 0, sessionCurrency = 'CAD'; // frozen for the whole session
+let rafId = null, busy = false, saveChain = Promise.resolve();
+let logRows = [];
+const LONG_SEGMENT_MS = 16 * 3_600_000;
+
+const nowWorkMs = (now = Date.now()) => totalWorkMs + (appState === 'working' ? Math.max(0, now - workStart) : 0);
+const nowBreakMs = (now = Date.now()) => totalBreakMs + (appState === 'break' ? Math.max(0, now - breakStart) : 0);
+const activeRate = () => (appState === 'idle' ? profile.hourly_rate : sessionRate);
+const activeCurrency = () => (appState === 'idle' ? profile.currency : sessionCurrency);
+
+function resetTimerState() {
+  appState = 'idle'; workStart = breakStart = sessionStart = null;
+  totalWorkMs = totalBreakMs = breakCount = 0;
+}
 
 // ── AUTH ──
 function authTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b, i) =>
-    b.classList.toggle('active', (i===0 && tab==='login') || (i===1 && tab==='signup')));
-  document.getElementById('loginForm').style.display  = tab==='login'  ? 'block' : 'none';
-  document.getElementById('signupForm').style.display = tab==='signup' ? 'block' : 'none';
-  document.getElementById('authMsg').style.display    = 'none';
+    b.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'signup')));
+  $('loginForm').style.display = tab === 'login' ? 'block' : 'none';
+  $('signupForm').style.display = tab === 'signup' ? 'block' : 'none';
+  $('authMsg').style.display = 'none';
 }
 
-function showMsg(msg, type='error') {
-  const el = document.getElementById('authMsg');
-  el.textContent   = msg;
-  el.className     = `auth-msg ${type}`;
-  el.style.display = 'block';
+function showMsg(msg, type = 'error') {
+  const e = $('authMsg');
+  e.textContent = msg;
+  e.className = `auth-msg ${type}`;
+  e.style.display = 'block';
 }
 
 async function doLogin() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const pass  = document.getElementById('loginPass').value;
+  const email = $('loginEmail').value.trim();
+  const pass = $('loginPass').value;
   if (!email || !pass) { showMsg('Please fill in both fields.'); return; }
   const { error } = await sb.auth.signInWithPassword({ email, password: pass });
   if (error) showMsg(error.message);
 }
 
 async function doSignup() {
-  const name  = document.getElementById('signupName').value.trim();
-  const email = document.getElementById('signupEmail').value.trim();
-  const pass  = document.getElementById('signupPass').value;
-  if (!name)           { showMsg('Please enter your name.'); return; }
+  const name = $('signupName').value.trim();
+  const email = $('signupEmail').value.trim();
+  const pass = $('signupPass').value;
+  if (!name) { showMsg('Please enter your name.'); return; }
   if (!email || !pass) { showMsg('Please fill in all fields.'); return; }
   if (pass.length < 6) { showMsg('Password must be at least 6 characters.'); return; }
 
-  const { data, error } = await sb.auth.signUp({ email, password: pass });
+  // Name travels in user metadata so it survives email-confirmation flows
+  // (no session exists yet, so a profiles upsert here would be blocked by RLS).
+  const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
   if (error) { showMsg(error.message); return; }
-
-  if (data?.user) {
-    await sb.from('profiles').upsert({
-      id:          data.user.id,
-      full_name:   name,
-      hourly_rate: 50,
-      currency:    'CAD'
-    });
+  if (data?.session) {
+    await sb.from('profiles').upsert({ id: data.user.id, full_name: name, hourly_rate: 50, currency: 'CAD' });
   }
-
   showMsg('✓ Account created! Check your email to confirm.', 'success');
 }
 
-// async function doLogout() {
-//   if (appState !== 'idle') {
-//     if (!confirm('You have an active session. Stop and sign out?')) return;
-//     cancelAnimationFrame(rafId);
-//     appState = 'idle';
-//   }
-//   await sb.auth.signOut();
-//   user    = null;
-//   logRows = [];
-//   document.getElementById('appScreen').style.display  = 'none';
-//   document.getElementById('authScreen').style.display = 'flex';
-// }
-
 async function doLogout() {
-  if (appState !== 'idle') await saveActiveTimer();  // save instead of stopping
-  cancelAnimationFrame(rafId);
-  rafId = null;
-  appState = 'idle';
-  user = null;
-  logRows = [];
-  await sb.auth.signOut();
-  document.getElementById('appScreen').style.display = 'none';
-  document.getElementById('authScreen').style.display = 'flex';
+  if (busy) return;
+  busy = true;
+  try {
+    if (appState !== 'idle') {
+      const ok = await persist(); // never drop a running timer silently
+      if (!ok && !confirm('Could not sync your running timer. Sign out anyway? It will be restored from this device.')) return;
+    }
+    await sb.auth.signOut();
+    leaveApp();
+  } finally { busy = false; }
 }
 
-// ── INIT ──
-async function init() {
-  const timeout = setTimeout(() => {
-    document.getElementById('loading').style.display    = 'none';
-    document.getElementById('authScreen').style.display = 'flex';
-  }, 6000);
+function showAuth() {
+  $('loading').style.display = 'none';
+  $('authScreen').style.display = 'flex';
+}
 
+function leaveApp() {
+  stopLoop();
+  resetTimerState();
+  user = null; appUserId = null; logRows = [];
+  renderState(); resetDisplays(); renderLog();
+  $('appScreen').style.display = 'none';
+  showAuth();
+}
+
+// Single entry point: ignores duplicate SIGNED_IN events (tab refocus, init + listener overlap).
+function enterApp(u) {
+  if (appUserId === u.id) return Promise.resolve();
+  if (entering) return entering;
+  entering = (async () => {
+    user = u;
+    await loadProfile();
+    $('loading').style.display = 'none';
+    $('authScreen').style.display = 'none';
+    await showApp();
+    appUserId = u.id;
+  })().finally(() => { entering = null; });
+  return entering;
+}
+
+async function init() {
+  const timeout = setTimeout(showAuth, 6000);
   try {
     const { data: { session } } = await sb.auth.getSession();
     clearTimeout(timeout);
-    document.getElementById('loading').style.display = 'none';
-
-    if (session?.user) {
-      user = session.user;
-      await loadProfile();
-      showApp();  
-      //document.getElementById('authScreen').style.display = 'none';
-      //document.getElementById('appScreen').style.display  = 'block';
-    } else {
-      document.getElementById('authScreen').style.display = 'flex';
-    }
-  } catch(e) {
+    if (session?.user) await enterApp(session.user);
+    else showAuth();
+  } catch (e) {
     clearTimeout(timeout);
-    document.getElementById('loading').style.display    = 'none';
-    document.getElementById('authScreen').style.display = 'flex';
+    console.error(e);
+    showAuth();
   }
 
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session?.user) {
-      user = session.user;
-      await loadProfile(); 
-      document.getElementById('authScreen').style.display = 'none';
-      showApp(); 
-      //document.getElementById('appScreen').style.display  = 'block';
-    } else if (event === 'SIGNED_OUT') {
-      document.getElementById('appScreen').style.display  = 'none';
-      document.getElementById('authScreen').style.display = 'flex';
-    }
+  // Do not await Supabase calls inside this callback (can deadlock the client): defer.
+  sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) setTimeout(() => enterApp(session.user).catch(console.error), 0);
+    else if (event === 'SIGNED_OUT') setTimeout(leaveApp, 0);
   });
 }
 
-// function showApp() {
-//   document.getElementById('appScreen').style.display = 'block';
-//   updateRateUI();
-//   resetDisplays();
-//   renderLog();
-// }
-
 async function showApp() {
-  document.getElementById('appScreen').style.display = 'block';
-  updateRateUI();
+  $('appScreen').style.display = 'block';
   const restored = await restoreActiveTimer();
+  updateRateUI();
+  renderState();
+
+console.log('[StackClock restore]', {
+  state: appState,
+  restored,
+  stopDisabled: $('btnStop').disabled,
+  breakDisabled: $('btnBreak').disabled,
+  activeTimer: snapshot()
+});
   if (restored) {
-    updateRateUI();
-    if (appState === 'working') setUIWorking();
-    if (appState === 'break')   setUIBreak();
     addLog('Session resumed', null);
-    rafId = requestAnimationFrame(tick);
-    showToast('⏱ Timer resumed — it kept running while you were away');
+    startLoop();
+    const seg = Date.now() - (appState === 'working' ? workStart : breakStart);
+    showToast(seg > LONG_SEGMENT_MS
+      ? '⚠ This timer has run for over 16 hours. Stop it to review.'
+      : '⏱ Timer resumed. It kept running while you were away.');
   } else {
     resetDisplays();
     renderLog();
   }
 }
 
-// ── TOAST ──
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-
 // ── NAV ──
 function goPage(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-
-  document.querySelectorAll('.nav-tab').forEach(t =>
-    t.classList.toggle('active', t.textContent.trim().toLowerCase() === page));
-
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    const on = t.textContent.trim().toLowerCase() === page;
+    t.classList.toggle('active', on);
+    on ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
+  });
   document.querySelectorAll('.mobile-tab').forEach(t => {
     const label = t.querySelector('.tab-label');
-    t.classList.toggle('active', label && label.textContent.trim().toLowerCase() === page);
+    const on = !!label && label.textContent.trim().toLowerCase() === page;
+    t.classList.toggle('active', on);
+    on ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
   });
-
-  const pageEl = document.getElementById(
-    'page' + page.charAt(0).toUpperCase() + page.slice(1)
-  );
+  const pageEl = $('page' + page.charAt(0).toUpperCase() + page.slice(1));
   if (pageEl) pageEl.classList.add('active');
-  if (page === 'history')  loadHistory();
+  if (page === 'history') loadHistory();
   if (page === 'settings') loadSettingsForm();
 }
 
-// ── HELPERS ──
-const SYMS = { CAD:'$', USD:'$', EUR:'€', GBP:'£', AUD:'$', JPY:'¥' };
-const sym  = () => SYMS[profile.currency] || '$';
+// ── TIMER PERSISTENCE ──
+const localKey = uid => `stackclock.timer.${uid}`;
 
-function fmtHMS(ms) {
-  const t = Math.floor(ms / 1000);
-  return [Math.floor(t/3600), Math.floor((t%3600)/60), t%60]
-    .map(n => String(n).padStart(2,'0')).join(':');
-}
-
-function fmtMoney(amount) {
-  const v = Math.floor(amount * 100) / 100;
+function snapshot() {
+  if (appState === 'idle') return null;
   return {
-    dollars: Math.floor(v).toLocaleString(),
-    cents:   String(Math.floor(v * 100) % 100).padStart(2,'0')
+    appState, workStart, breakStart, totalWorkMs, totalBreakMs, breakCount,
+    sessionStart: sessionStart ? sessionStart.toISOString() : null,
+    hourly_rate: sessionRate, currency: sessionCurrency, savedAt: Date.now(),
   };
 }
 
-function calcEarnings(ms) {
-  return Math.floor((ms / 3_600_000) * profile.hourly_rate * 100) / 100;
+function writeLocal(uid, snap, unsynced) {
+  try {
+    if (snap) localStorage.setItem(localKey(uid), JSON.stringify({ ...snap, unsynced }));
+    else localStorage.removeItem(localKey(uid));
+  } catch { /* storage unavailable: remote copy still applies */ }
+}
+function readLocal(uid) {
+  try { return JSON.parse(localStorage.getItem(localKey(uid)) || 'null'); } catch { return null; }
 }
 
-// ── TRACKER ──
-async function startWork() {
-  if (appState !== 'idle') return;
-
-  const inputRate = parseFloat(document.getElementById('rateInput').value);
-  if (!inputRate || inputRate <= 0) {
-    showToast('⚠️ Set your hourly rate first!');
-    return;
+async function writeRemote(uid, snap) {
+  let lastErr;
+  for (let i = 0; i < 3; i++) {
+    const { error } = await sb.from('profiles').update({ active_timer: snap }).eq('id', uid);
+    if (!error) return;
+    lastErr = error;
+    await new Promise(r => setTimeout(r, 400 * (i + 1)));
   }
-  profile.hourly_rate = inputRate;
-
-  appState     = 'working';
-  workStart    = Date.now();
-  sessionStart = new Date();
-  totalWorkMs  = 0;
-  totalBreakMs = 0;
-  breakCount   = 0;
-
-  setUIWorking();
-  addLog('Session started', null);
-  rafId = requestAnimationFrame(tick);
-  await saveActiveTimer();
+  throw lastErr;
 }
 
-async function toggleBreak() {
-  if (appState === 'working') {
-    totalWorkMs += Date.now() - workStart;
-    breakStart   = Date.now();
-    appState     = 'break';
-    breakCount++;
-    setUIBreak();
-    addLog(`Break #${breakCount} started`, null);
-  } else if (appState === 'break') {
-    totalBreakMs += Date.now() - breakStart;
-    workStart     = Date.now();
-    appState      = 'working';
-    setUIWorking();
-    addLog(`Break #${breakCount} ended`, null);
-  }
-  await saveActiveTimer();
-}
-
-async function stopWork() {
-  if (appState === 'idle') return;
-  cancelAnimationFrame(rafId);
-
-  const now = Date.now();
-  if (appState === 'working') totalWorkMs  += now - workStart;
-  if (appState === 'break')   totalBreakMs += now - breakStart;
-
-  const earned = calcEarnings(totalWorkMs);
-  addLog(`Session ended — ${fmtHMS(totalWorkMs)} worked`, earned);
-  setUIIdle();
-  appState = 'idle';
-  await clearActiveTimer();
-
-  if (user) {
+// Writes are chained so older snapshots can never overwrite newer ones.
+function persist(snap = snapshot()) {
+  if (!user) return Promise.resolve(true);
+  const uid = user.id;
+  writeLocal(uid, snap, true);
+  saveChain = saveChain.then(async () => {
     try {
-      await sb.from('sessions').insert({
-        user_id:           user.id,
-        started_at:        sessionStart.toISOString(),
-        ended_at:          new Date().toISOString(),
-        work_duration_ms:  Math.round(totalWorkMs),
-        break_duration_ms: Math.round(totalBreakMs),
-        break_count:       breakCount,
-        hourly_rate:       profile.hourly_rate,
-        currency:          profile.currency,
-        total_earned:      Math.floor(earned * 10000) / 10000,
-        client_name:       'Default',
-        notes:             null,
-      });
-      showToast('✓ Session saved!');
-    } catch(e) {
+      await writeRemote(uid, snap);
+      writeLocal(uid, snap, false);
+      return true;
+    } catch (e) {
       console.error(e);
-      showToast('Session ended but could not save.');
+      showToast('⚠ Could not sync timer. Saved on this device.');
+      return false;
     }
-  }
-
-  resetDisplays();
-}
-
-// ── TICK LOOP ──
-function tick() {
-  const now = Date.now();
-  let workMs, elapsed;
-
-  if (appState === 'working') {
-    workMs  = totalWorkMs + (now - workStart);
-    elapsed = workMs + totalBreakMs;
-  } else if (appState === 'break') {
-    workMs  = totalWorkMs;
-    elapsed = workMs + totalBreakMs + (now - breakStart);
-  } else return;
-
-  const timerEl = document.getElementById('timerDisplay');
-  if (timerEl) timerEl.textContent = fmtHMS(elapsed);
-
-  const earned = calcEarnings(workMs);
-  const { dollars, cents } = fmtMoney(earned);
-  const s = sym();
-
-  const moneyEl = document.getElementById('moneyNum');
-  if (moneyEl) moneyEl.innerHTML =
-    `<span class="sym">${s}</span>${dollars}<span class="cts">.${cents}</span>`;
-
-  const subEl = document.getElementById('moneySub');
-  if (subEl) subEl.textContent =
-    `${s}${(profile.hourly_rate/3600).toFixed(5)} / sec  ·  ${s}${profile.hourly_rate.toFixed(2)} / hr`;
-
-  const swEl = document.getElementById('statWork');
-  if (swEl) swEl.textContent = fmtHMS(workMs);
-
-  const sbEl = document.getElementById('statBreak');
-  if (sbEl) sbEl.textContent = fmtHMS(
-    appState === 'break' ? totalBreakMs + (now - breakStart) : totalBreakMs
-  );
-
-  const spEl = document.getElementById('statPerMin');
-  if (spEl) spEl.textContent = `${s}${(profile.hourly_rate/60).toFixed(3)}`;
-
-  rafId = requestAnimationFrame(tick);
-}
-
-// ── UI STATES ──
-function setUIWorking() {
-  document.getElementById('moneyNum').className      = 'money-number working';
-  document.getElementById('timerDisplay').className  = 'timer-display';
-  document.getElementById('statusPill').className    = 'status-pill working';
-  document.getElementById('statusLabel').textContent = 'Working';
-  document.getElementById('btnStart').disabled       = true;
-  document.getElementById('btnBreak').disabled       = false;
-  document.getElementById('btnBreak').textContent    = '⏸ Break';
-  document.getElementById('btnStop').disabled        = false;
-}
-
-function setUIBreak() {
-  document.getElementById('moneyNum').className      = 'money-number on-break';
-  document.getElementById('timerDisplay').className  = 'timer-display on-break';
-  document.getElementById('statusPill').className    = 'status-pill break';
-  document.getElementById('statusLabel').textContent = 'On Break';
-  document.getElementById('btnBreak').textContent    = '▶ Resume';
-}
-
-function setUIIdle() {
-  document.getElementById('moneyNum').className      = 'money-number idle';
-  document.getElementById('timerDisplay').className  = 'timer-display';
-  document.getElementById('statusPill').className    = 'status-pill idle';
-  document.getElementById('statusLabel').textContent = 'Idle';
-  document.getElementById('btnStart').disabled       = false;
-  document.getElementById('btnBreak').disabled       = true;
-  document.getElementById('btnBreak').textContent    = '⏸ Break';
-  document.getElementById('btnStop').disabled        = true;
-}
-
-function resetDisplays() {
-  const s = sym();
-  const mn = document.getElementById('moneyNum');
-  if (mn) mn.innerHTML = `<span class="sym">${s}</span>0<span class="cts">.00</span>`;
-  const td = document.getElementById('timerDisplay');
-  if (td) td.textContent = '00:00:00';
-  const ms = document.getElementById('moneySub');
-  if (ms) ms.textContent = 'set your rate and press start';
-  ['statWork','statBreak'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = '00:00:00';
   });
-  const sp = document.getElementById('statPerMin');
-  if (sp) sp.textContent = '—';
+  return saveChain;
 }
 
-// ── LOG ──
-function addLog(event, earned) {
-  logRows.unshift({ time: new Date().toTimeString().slice(0,8), event, earned });
-  renderLog();
-}
-
-function renderLog() {
-  const box = document.getElementById('logBox');
-  if (!box) return;
-  const s = sym();
-  if (!logRows.length) {
-    box.innerHTML = '<div class="log-empty">No activity yet — press Start</div>';
-    return;
-  }
-  box.innerHTML = logRows.map(r => `
-    <div class="log-row">
-      <span class="log-time">${r.time}</span>
-      <span class="log-event">${r.event}</span>
-      <span class="log-earn">${r.earned !== null ? s + r.earned.toFixed(4) : ''}</span>
-    </div>
-  `).join('');
-}
-
-function clearLog() { logRows = []; renderLog(); }
-
-// ── HISTORY ──
-async function loadHistory() {
-  if (!user) return;
-  const listEl = document.getElementById('sessionsList');
-  if (listEl) listEl.innerHTML = '<div class="no-sessions">Loading...</div>';
-
-  const { data, error } = await sb
-    .from('sessions').select('*')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(100);
-
-  if (error || !data) {
-    if (listEl) listEl.innerHTML = '<div class="no-sessions">Could not load sessions.</div>';
-    return;
-  }
-
-  const totalEarned = data.reduce((a, r) => a + parseFloat(r.total_earned || 0), 0);
-  const totalMs     = data.reduce((a, r) => a + parseInt(r.work_duration_ms || 0), 0);
-  const s           = sym();
-
-  const he = document.getElementById('histEarned');
-  if (he) he.textContent = `${s}${totalEarned.toFixed(2)}`;
-
-  const hh = document.getElementById('histHours');
-  if (hh) hh.textContent =
-    `${Math.floor(totalMs/3600000)}h ${Math.floor((totalMs%3600000)/60000)}m`;
-
-  const hc = document.getElementById('histCount');
-  if (hc) hc.textContent = data.length;
-
-  if (!data.length) {
-    if (listEl) listEl.innerHTML =
-      '<div class="no-sessions">No sessions yet — start your first session!</div>';
-    return;
-  }
-
-  if (listEl) listEl.innerHTML = data.map(row => {
-    const d     = new Date(row.started_at);
-    const date  = d.toLocaleDateString('en-CA', { month:'short', day:'numeric', year:'numeric' });
-    const time  = d.toLocaleTimeString('en-CA', { hour:'2-digit', minute:'2-digit' });
-    const dur   = fmtHMS(parseInt(row.work_duration_ms || 0));
-    const earn  = parseFloat(row.total_earned || 0).toFixed(2);
-    const notes = row.notes || '—';
-    return `
-      <div class="session-row">
-        <span class="s-date">${date}<br>${time}</span>
-        <span class="s-notes">${notes}</span>
-        <span class="s-dur">${dur}</span>
-        <span class="s-earn">${s}${earn}</span>
-        <button class="btn-del" onclick="deleteSession('${row.id}')" title="Delete">×</button>
-      </div>
-    `;
-  }).join('');
-}
-
-async function deleteSession(id) {
-  if (!confirm('Delete this session?')) return;
-  const { error } = await sb.from('sessions').delete()
-    .eq('id', id).eq('user_id', user.id);
-  if (error) { showToast('Could not delete.'); return; }
-  showToast('Session deleted.');
-  loadHistory();
-}
-
-// ── PROFILE ──
-async function loadProfile() {
-  if (!user) return;
-  const { data } = await sb.from('profiles')
-    .select('*').eq('id', user.id).single();
-  if (data) {
-    profile.full_name   = data.full_name   || '';
-    profile.hourly_rate = data.hourly_rate || 50;
-    profile.currency    = data.currency    || 'CAD';
-  }
-}
-
-async function saveSettings() {
-  const name     = document.getElementById('setName').value.trim();
-  const rate     = parseFloat(document.getElementById('setRate').value) || 50;
-  const currency = document.getElementById('setCurrency').value;
-
-  profile.full_name   = name;
-  profile.hourly_rate = rate;
-  profile.currency    = currency;
-
-  if (user) {
-    const { error } = await sb.from('profiles').upsert({
-      id:          user.id,
-      full_name:   name,
-      hourly_rate: rate,
-      currency:    currency
-    });
-    if (error) { showToast('Could not save settings.'); return; }
-  }
-
-  updateRateUI();
-
-  const el = document.getElementById('saveMsg');
-  el.textContent = '✓ Settings saved to your account!';
-  setTimeout(() => el.textContent = '', 3000);
-}
-
-function updateRateUI() {
-  const s = sym();
-  const rateEl = document.getElementById('rateInput');
-  if (rateEl) rateEl.value = profile.hourly_rate;
-  const rateSymEl = document.getElementById('rateSym');
-  if (rateSymEl) rateSymEl.textContent = s;
-  const moneySymEl = document.getElementById('moneySym');
-  if (moneySymEl) moneySymEl.textContent = s;
-  const rateSuffixEl = document.getElementById('rateSuffix');
-  if (rateSuffixEl) rateSuffixEl.textContent = `/ hr · ${profile.currency}`;
-  const greetEl = document.getElementById('navGreeting');
-  if (greetEl && profile.full_name)
-    greetEl.textContent = `Hi, ${profile.full_name.split(' ')[0]} 👋`;
-}
-
-function loadSettingsForm() {
-  const nameEl = document.getElementById('setName');
-  if (nameEl) nameEl.value = profile.full_name;
-  const rateEl = document.getElementById('setRate');
-  if (rateEl) rateEl.value = profile.hourly_rate;
-  const currEl = document.getElementById('setCurrency');
-  if (currEl) currEl.value = profile.currency;
-}
-
-// ── ACTIVETIMER ──
-async function saveActiveTimer() {
-  if (!user) return;
-  await sb.from('profiles').update({
-    active_timer: {
-      appState, workStart, breakStart,
-      totalWorkMs, totalBreakMs, breakCount,
-      sessionStart: sessionStart ? sessionStart.toISOString() : null,
-      hourly_rate: profile.hourly_rate,
-      currency: profile.currency,
-    }
-  }).eq('id', user.id);
-}
-
-async function clearActiveTimer() {
-  if (!user) return;
-  await sb.from('profiles').update({ active_timer: null }).eq('id', user.id);
+// Returns a sanitised snapshot or null. Segment start must be a plausible epoch ms.
+function validateSnap(s) {
+  if (!s || (s.appState !== 'working' && s.appState !== 'break')) return null;
+  const now = Date.now();
+  const ms = v => (Number.isFinite(+v) && +v >= 0 ? +v : null);
+  const seg = ms(s.appState === 'working' ? s.workStart : s.breakStart);
+  if (seg === null || seg < 1e12) return null;
+  const rate = +s.hourly_rate > 0 ? +s.hourly_rate : profile.hourly_rate;
+  return {
+    appState: s.appState,
+    workStart: s.appState === 'working' ? Math.min(seg, now) : null,
+    breakStart: s.appState === 'break' ? Math.min(seg, now) : null,
+    totalWorkMs: ms(s.totalWorkMs) ?? 0,
+    totalBreakMs: ms(s.totalBreakMs) ?? 0,
+    breakCount: Math.floor(ms(s.breakCount) ?? 0),
+    sessionStart: s.sessionStart && !isNaN(new Date(s.sessionStart)) ? new Date(s.sessionStart) : new Date(Math.min(seg, now)),
+    rate,
+    currency: SYMS[s.currency] ? s.currency : profile.currency,
+  };
 }
 
 async function restoreActiveTimer() {
   if (!user) return false;
-  const { data } = await sb.from('profiles').select('active_timer').eq('id', user.id).single();
-  const s = data?.active_timer;
-  if (!s || !s.appState || s.appState === 'idle') return false;
-  appState = s.appState;
-  workStart = s.workStart;
-  breakStart = s.breakStart;
-  totalWorkMs = s.totalWorkMs || 0;
-  totalBreakMs = s.totalBreakMs || 0;
-  breakCount = s.breakCount || 0;
-  sessionStart = s.sessionStart ? new Date(s.sessionStart) : new Date();
-  profile.hourly_rate = s.hourly_rate || profile.hourly_rate;
-  profile.currency = s.currency || profile.currency;
+  let remote = null, remoteOk = true;
+  try {
+    const { data, error } = await sb.from('profiles').select('active_timer').eq('id', user.id).maybeSingle();
+    if (error) throw error;
+    remote = data?.active_timer || null;
+  } catch (e) {
+    remoteOk = false;
+    console.error(e);
+    showToast('⚠ Could not reach server. Using this device’s copy.');
+  }
+  const local = readLocal(user.id);
+  // Server is authoritative, unless this device holds a newer change that never synced.
+  const newerLocal = local && local.unsynced && (local.savedAt || 0) >= ((remote && remote.savedAt) || 0);
+  const raw = remoteOk ? (newerLocal ? local : remote) : local;
+  if (!raw) { writeLocal(user.id, null); return false; }
+
+  const v = validateSnap(raw);
+  if (!v) {
+    showToast('Saved timer data was invalid and was discarded.');
+    await persist(null);
+    return false;
+  }
+  appState = v.appState; workStart = v.workStart; breakStart = v.breakStart;
+  totalWorkMs = v.totalWorkMs; totalBreakMs = v.totalBreakMs; breakCount = v.breakCount;
+  sessionStart = v.sessionStart; sessionRate = v.rate; sessionCurrency = v.currency;
+  if (newerLocal) persist(); // push the device copy up
   return true;
+}
+
+// ── TIMER ACTIONS ──
+function startLoop() { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(tick); }
+function stopLoop() { cancelAnimationFrame(rafId); rafId = null; }
+
+async function startWork() {
+  if (busy || appState !== 'idle') return;
+  const rate = parseFloat($('rateInput').value);
+  if (!(rate > 0)) { showToast('⚠ Set your hourly rate first.'); return; }
+  busy = true;
+  try {
+    const now = Date.now();
+    profile.hourly_rate = rate;
+    sessionRate = rate; sessionCurrency = profile.currency;
+    appState = 'working'; workStart = now; breakStart = null;
+    totalWorkMs = totalBreakMs = breakCount = 0;
+    sessionStart = new Date(now);
+    renderState();
+    addLog('Session started', null);
+    startLoop();
+    await persist();
+  } finally { busy = false; }
+}
+
+async function toggleBreak() {
+  if (busy || appState === 'idle') return;
+  busy = true;
+  try {
+    const now = Date.now();
+    if (appState === 'working') {
+      totalWorkMs += Math.max(0, now - workStart);
+      breakStart = now; workStart = null; appState = 'break'; breakCount++;
+      addLog(`Break #${breakCount} started`, null);
+    } else {
+      totalBreakMs += Math.max(0, now - breakStart);
+      workStart = now; breakStart = null; appState = 'working';
+      addLog(`Break #${breakCount} ended`, null);
+    }
+    renderState();
+    startLoop();
+    await persist();
+  } finally { busy = false; }
+}
+
+async function stopWork() {
+  if (busy || appState === 'idle') return;
+  busy = true;
+  try {
+    // Totals are computed without mutating state, so a failed save leaves the timer intact.
+    const now = Date.now();
+    const workMs = Math.round(nowWorkMs(now));
+    const breakMs = Math.round(nowBreakMs(now));
+    const cents = calcCents(workMs, sessionRate);
+
+    if (workMs >= 1000) {
+      const { error } = await sb.from('sessions').insert({
+        user_id: user.id,
+        started_at: sessionStart.toISOString(),
+        ended_at: new Date(now).toISOString(),
+        work_duration_ms: workMs,
+        break_duration_ms: breakMs,
+        break_count: breakCount,
+        hourly_rate: sessionRate,
+        currency: sessionCurrency,
+        total_earned: cents / 100,
+        client_name: 'Default',
+        notes: null,
+      });
+      if (error) {
+        console.error(error);
+        showToast('⚠ Could not save the session. Timer is still running, try Stop again.');
+        return;
+      }
+      showToast('✓ Session saved.');
+    } else {
+      showToast('Session under 1 second. Not saved.');
+    }
+
+    addLog(`Session ended: ${fmtHMS(workMs)} worked`, cents / 100);
+    stopLoop();
+    resetTimerState();
+    renderState();
+    resetDisplays();
+    await persist(null); // clear only after the session is safely stored
+  } finally { busy = false; }
+}
+
+// ── TICK ──
+let lastMoney = '';
+function tick() {
+  if (appState === 'idle') { rafId = null; return; }
+  const now = Date.now();
+  const workMs = nowWorkMs(now), breakMs = nowBreakMs(now);
+  const s = symFor(sessionCurrency);
+
+  $('timerDisplay').textContent = fmtHMS(workMs + breakMs);
+  const { dollars, cents } = splitCents(calcCents(workMs, sessionRate));
+  const money = `${s}|${dollars}|${cents}`;
+  if (money !== lastMoney) {
+    lastMoney = money;
+    $('moneyNum').innerHTML = `<span class="sym" id="moneySym">${s}</span>${dollars}<span class="cts">.${cents}</span>`;
+  }
+  $('moneySub').textContent = `${s}${(sessionRate / 3600).toFixed(5)} / sec  ·  ${s}${sessionRate.toFixed(2)} / hr`;
+  $('statWork').textContent = fmtHMS(workMs);
+  $('statBreak').textContent = fmtHMS(breakMs);
+  $('statPerMin').textContent = `${s}${(sessionRate / 60).toFixed(3)}`;
+  rafId = requestAnimationFrame(tick);
+}
+
+// ── RENDER ──
+// One function sets every control explicitly, so no state can inherit a stale disabled flag.
+function renderState() {
+  const st = appState;
+  $('moneyNum').className = 'money-number ' + (st === 'working' ? 'working' : st === 'break' ? 'on-break' : 'idle');
+  $('timerDisplay').className = 'timer-display' + (st === 'break' ? ' on-break' : '');
+  $('statusPill').className = 'status-pill ' + (st === 'working' ? 'working' : st === 'break' ? 'break' : 'idle');
+  $('statusLabel').textContent = st === 'working' ? 'Working' : st === 'break' ? 'On Break' : 'Idle';
+  $('btnStart').disabled = st !== 'idle';
+  $('btnBreak').disabled = st === 'idle';
+  $('btnBreak').textContent = st === 'break' ? '▶ Resume' : '⏸ Break';
+  $('btnStop').disabled = st === 'idle';
+  $('rateInput').disabled = st !== 'idle';
+  lastMoney = '';
+}
+
+function resetDisplays() {
+  const s = symFor(profile.currency);
+  $('moneyNum').innerHTML = `<span class="sym" id="moneySym">${s}</span>0<span class="cts">.00</span>`;
+  $('timerDisplay').textContent = '00:00:00';
+  $('moneySub').textContent = 'set your rate and press start';
+  $('statWork').textContent = '00:00:00';
+  $('statBreak').textContent = '00:00:00';
+  $('statPerMin').textContent = '—';
+}
+
+function updateRateUI() {
+  $('rateInput').value = activeRate();
+  $('rateSym').textContent = symFor(activeCurrency());
+  const ms = $('moneySym'); if (ms) ms.textContent = symFor(activeCurrency());
+  $('rateSuffix').textContent = `/ hr · ${activeCurrency()}`;
+  if (profile.full_name) $('navGreeting').textContent = `Hi, ${profile.full_name.split(' ')[0]} 👋`;
+}
+
+// ── LOG ──
+function addLog(event, earned) {
+  logRows.unshift({ time: new Date().toTimeString().slice(0, 8), event, earned, cur: activeCurrency() });
+  renderLog();
+}
+function renderLog() {
+  const box = $('logBox');
+  if (!logRows.length) { box.replaceChildren(el('div', { class: 'log-empty' }, 'No activity yet. Press Start.')); return; }
+  box.replaceChildren(...logRows.map(r => el('div', { class: 'log-row' },
+    el('span', { class: 'log-time' }, r.time),
+    el('span', { class: 'log-event' }, r.event),
+    el('span', { class: 'log-earn' }, r.earned !== null ? fmtCur(r.earned, r.cur) : ''))));
+}
+function clearLog() { logRows = []; renderLog(); }
+
+// ── DIALOGS ──
+function makeDialog(title, ...body) {
+  const d = el('dialog', { 'aria-label': title }, el('h2', { class: 'settings-card-header' }, title), ...body);
+  d.addEventListener('close', () => d.remove());
+  document.body.append(d);
+  d.showModal();
+  return d;
+}
+
+function confirmDialog(title, msg, okLabel) {
+  return new Promise(resolve => {
+    let ok = false;
+    const d = makeDialog(title,
+      el('p', { style: 'margin:16px 0;font-size:14px' }, msg),
+      el('div', { class: 'controls', style: 'grid-template-columns:1fr 1fr;margin:0' },
+        el('button', { type: 'button', class: 'btn-ctrl', onclick: () => d.close() }, 'Cancel'),
+        el('button', { type: 'button', class: 'btn-ctrl btn-stop', onclick: () => { ok = true; d.close(); } }, okLabel)));
+    d.addEventListener('close', () => resolve(ok));
+  });
+}
+
+function field(id, label, attrs) {
+  const input = el('input', { id, ...attrs });
+  return { input, node: el('div', { class: 'field' }, el('label', { for: id }, label), input) };
+}
+
+// Create (row = null) or edit a session. Currency is preserved; earnings are recalculated
+// from the edited duration and rate. Break time is subtracted from the span to get work time.
+function openSessionDialog(row) {
+  const editing = !!row;
+  const cur = row?.currency || profile.currency;
+  const end0 = row ? new Date(row.ended_at || row.started_at) : new Date();
+  const start0 = row ? new Date(row.started_at) : new Date(end0.getTime() - 3_600_000);
+  const f = {
+    start: field('fStart', 'Start', { type: 'datetime-local', value: toLocalInput(start0) }),
+    end: field('fEnd', 'End', { type: 'datetime-local', value: toLocalInput(end0) }),
+    brk: field('fBreak', 'Break (minutes)', { type: 'number', min: '0', step: '1', value: String(Math.round((row?.break_duration_ms || 0) / 60000)) }),
+    rate: field('fRate', `Hourly rate (${cur})`, { type: 'number', min: '0', step: '0.01', value: String(row?.hourly_rate ?? profile.hourly_rate) }),
+    notes: field('fNotes', 'Notes', { type: 'text', maxlength: '200', value: row?.notes || '' }),
+  };
+  const msg = el('div', { class: 'auth-msg error', role: 'alert' });
+  const err = t => { msg.textContent = t; msg.style.display = 'block'; };
+  const saveBtn = el('button', { type: 'button', class: 'btn-primary' }, editing ? 'Save changes' : 'Add session');
+
+  const d = makeDialog(editing ? 'Edit session' : 'Add session',
+    el('div', { style: 'margin-top:16px' }, ...Object.values(f).map(x => x.node)),
+    msg, saveBtn,
+    el('div', { style: 'display:flex;justify-content:space-between;margin-top:14px' },
+      el('button', { type: 'button', class: 'btn-clear', onclick: () => d.close() }, 'Cancel'),
+      editing ? el('button', { type: 'button', class: 'btn-clear', onclick: () => { d.close(); deleteSession(row.id); } }, 'Delete session') : null));
+
+  saveBtn.addEventListener('click', async () => {
+    msg.style.display = 'none';
+    const s = new Date(f.start.input.value), e = new Date(f.end.input.value);
+    if (isNaN(s) || isNaN(e)) return err('Enter a valid start and end time.');
+    if (e <= s) return err('End must be after start.');
+    if (e.getTime() > Date.now() + 60_000) return err('End time is in the future.');
+    const brk = Math.round(parseFloat(f.brk.input.value || '0') * 60_000);
+    if (!(brk >= 0)) return err('Break cannot be negative.');
+    const span = e - s;
+    if (brk >= span) return err('Break must be shorter than the session.');
+    const rate = parseFloat(f.rate.input.value);
+    if (!(rate >= 0)) return err('Enter a valid hourly rate.');
+    const work = span - brk;
+    const payload = {
+      started_at: s.toISOString(), ended_at: e.toISOString(),
+      work_duration_ms: work, break_duration_ms: brk,
+      hourly_rate: rate, total_earned: calcCents(work, rate) / 100,
+      notes: f.notes.input.value.trim() || null,
+    };
+    saveBtn.disabled = true;
+    let res;
+    if (editing) {
+      res = await sb.from('sessions').update(payload).eq('id', row.id).eq('user_id', user.id).select('id');
+      if (!res.error && !res.data?.length) res = { error: new Error('No row updated') };
+    } else {
+      res = await sb.from('sessions').insert({
+        ...payload, user_id: user.id, currency: cur,
+        break_count: brk > 0 ? 1 : 0, client_name: 'Default',
+      });
+    }
+    saveBtn.disabled = false;
+    if (res.error) { console.error(res.error); return err('Could not save. Please try again.'); }
+    d.close();
+    showToast(editing ? '✓ Session updated.' : '✓ Session added.');
+    loadHistory();
+  });
+}
+
+// ── HISTORY ──
+let historyRows = [], historyShown = 0;
+const HISTORY_FETCH = 500, HISTORY_PAGE = 50;
+
+function ensureHistoryTools() {
+  if ($('btnAddSession')) return;
+  const btn = el('button', { type: 'button', class: 'btn-save', id: 'btnAddSession', style: 'margin-bottom:22px', onclick: () => openSessionDialog(null) }, '+ Add manual session');
+  document.querySelector('.history-page .summary-row').before(btn);
+}
+
+async function loadHistory() {
+  if (!user) return;
+  ensureHistoryTools();
+  const listEl = $('sessionsList');
+  listEl.replaceChildren(el('div', { class: 'no-sessions' }, 'Loading…'));
+
+  const { data, error } = await sb.from('sessions').select('*')
+    .eq('user_id', user.id).order('started_at', { ascending: false }).limit(HISTORY_FETCH);
+  if (error || !data) {
+    console.error(error);
+    listEl.replaceChildren(el('div', { class: 'no-sessions' }, 'Could not load sessions.'));
+    return;
+  }
+  historyRows = data; historyShown = 0;
+
+  // Totals are never mixed across currencies.
+  const byCur = new Map();
+  let totalMs = 0;
+  data.forEach(r => {
+    const c = r.currency || 'CAD';
+    byCur.set(c, (byCur.get(c) || 0) + parseFloat(r.total_earned || 0));
+    totalMs += parseInt(r.work_duration_ms || 0, 10);
+  });
+  $('histEarned').textContent = byCur.size
+    ? [...byCur].map(([c, v]) => fmtCur(v, c)).join(' + ')
+    : fmtCur(0, profile.currency);
+  $('histHours').textContent = `${Math.floor(totalMs / 3_600_000)}h ${Math.floor((totalMs % 3_600_000) / 60_000)}m`;
+  $('histCount').textContent = data.length >= HISTORY_FETCH ? `${data.length}+` : String(data.length);
+
+  renderHistoryMore(true);
+}
+
+function renderHistoryMore(reset) {
+  const listEl = $('sessionsList');
+  if (!historyRows.length) {
+    listEl.replaceChildren(el('div', { class: 'no-sessions' }, 'No sessions yet. Start your first session or add one manually.'));
+    return;
+  }
+  if (reset) listEl.replaceChildren();
+  listEl.querySelector('.more-row')?.remove();
+
+  historyRows.slice(historyShown, historyShown + HISTORY_PAGE).forEach(r => listEl.append(sessionRow(r)));
+  historyShown = Math.min(historyRows.length, historyShown + HISTORY_PAGE);
+
+  if (historyShown < historyRows.length || historyRows.length >= HISTORY_FETCH) {
+    const more = historyShown < historyRows.length;
+    listEl.append(el('div', { class: 'no-sessions more-row' },
+      more ? el('button', { type: 'button', class: 'btn-clear', onclick: () => renderHistoryMore(false) }, `Show more (${historyRows.length - historyShown} left)`)
+        : `Showing your latest ${HISTORY_FETCH} sessions.`));
+  }
+}
+
+function sessionRow(r) {
+  const d = new Date(r.started_at);
+  const date = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' });
+  const open = () => openSessionDialog(r);
+  const row = el('div', {
+    class: 'session-row', role: 'button', tabindex: '0',
+    'aria-label': `Edit session from ${date} ${time}`, style: 'cursor:pointer',
+    onclick: open,
+    onkeydown: e => { if (e.target === row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } },
+  },
+    el('span', { class: 's-date' }, date, document.createElement('br'), time),
+    el('span', { class: 's-notes' }, r.notes || '—'),
+    el('span', { class: 's-dur' }, fmtHMS(parseInt(r.work_duration_ms || 0, 10))),
+    el('span', { class: 's-earn' }, fmtCur(parseFloat(r.total_earned || 0), r.currency || 'CAD')),
+    el('button', {
+      type: 'button', class: 'btn-del', title: 'Delete', 'aria-label': `Delete session from ${date} ${time}`,
+      onclick: e => { e.stopPropagation(); deleteSession(r.id); },
+    }, '×'));
+  return row;
+}
+
+async function deleteSession(id) {
+  const ok = await confirmDialog('Delete session', 'This permanently deletes the session. This cannot be undone.', 'Delete');
+  if (!ok) return;
+  // .select() lets us detect a silent no-op (e.g. a row RLS did not allow us to delete).
+  const { data, error } = await sb.from('sessions').delete().eq('id', id).eq('user_id', user.id).select('id');
+  if (error || !data?.length) { console.error(error); showToast('⚠ Could not delete the session.'); return; }
+  showToast('Session deleted.');
+  loadHistory();
+}
+
+// ── PROFILE / SETTINGS ──
+async function loadProfile() {
+  if (!user) return;
+  const { data, error } = await sb.from('profiles').select('full_name,hourly_rate,currency').eq('id', user.id).maybeSingle();
+  if (error) { console.error(error); showToast('⚠ Could not load your profile. Using defaults.'); }
+  if (data) {
+    profile.full_name = data.full_name || '';
+    profile.hourly_rate = Number(data.hourly_rate) > 0 ? Number(data.hourly_rate) : 50;
+    profile.currency = SYMS[data.currency] ? data.currency : 'CAD';
+  } else if (!error) {
+    // Missing profile row (e.g. email-confirmed signup): create it from signup metadata.
+    profile.full_name = user.user_metadata?.full_name || '';
+    const { error: e2 } = await sb.from('profiles').upsert({ id: user.id, full_name: profile.full_name, hourly_rate: 50, currency: 'CAD' });
+    if (e2) console.error(e2);
+  }
+}
+
+async function saveSettings() {
+  const name = $('setName').value.trim();
+  const rate = parseFloat($('setRate').value);
+  const currency = $('setCurrency').value;
+  if (!(rate > 0)) { showToast('⚠ Enter a valid hourly rate.'); return; }
+
+  if (user) {
+    const { error } = await sb.from('profiles').upsert({ id: user.id, full_name: name, hourly_rate: rate, currency });
+    if (error) { console.error(error); showToast('⚠ Could not save settings.'); return; }
+  }
+  profile.full_name = name; profile.hourly_rate = rate; profile.currency = currency;
+  updateRateUI();
+  if (appState === 'idle') resetDisplays();
+
+  const m = $('saveMsg');
+  m.textContent = appState === 'idle'
+    ? '✓ Settings saved to your account.'
+    : '✓ Saved. The running session keeps its original rate and currency.';
+  setTimeout(() => { m.textContent = ''; }, 4000);
+}
+
+function loadSettingsForm() {
+  $('setName').value = profile.full_name;
+  $('setRate').value = profile.hourly_rate;
+  $('setCurrency').value = profile.currency;
 }
 
 init();
